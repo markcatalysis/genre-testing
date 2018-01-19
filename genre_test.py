@@ -12,7 +12,8 @@ from keras.models import Sequential, Model
 from keras.layers import Input, Dense, TimeDistributed, LSTM, Dropout, Activation
 from keras.layers import Convolution2D, MaxPooling2D, Flatten
 from keras.layers.normalization import BatchNormalization
-from keras.layers.advanced_activations import ELU
+from keras.layers.advanced_activations import LeakyReLU, ELU
+from keras.optimizers import Adadelta
 from keras.callbacks import ModelCheckpoint
 from kapre.augmentation import AdditiveNoise
 from kapre.utils import Normalization2D
@@ -68,8 +69,8 @@ def sound_load(genre):
         # src, sr = librosa.load(folder+song, sr=None, mono=True)
         # yield src, sr
 
-print(src.shape)
-print(sr)
+# print(src.shape)
+# print(sr)
 
 """
 Adjusting example code from kapre.
@@ -104,68 +105,69 @@ def visualise_model(model, src, sr, logam=False):
 """
 Testing Code
 """
-s=sound_load(genre_list[0])
+# s=sound_load(genre_list[0])
 # s.next()
-src, sr= librosa.load(s.next(), sr=None, mono=True)
+# src, sr= librosa.load(s.next(), sr=None, mono=True)
 # src = src[np.newaxis, :]
-model = Sequential()
-model.add(Melspectrogram(sr=sr, n_mels=128,
-          n_dft=512, n_hop=256, input_shape=src[np.newaxis,:].shape,
-          return_decibel_melgram=False, power_melgram=2.0,
-          trainable_kernel=True, name='melgram'))
-plt.figure(figsize=(14, 8))
-plt.subplot(2, 2, 1)
-plt.title('log-MelSpectrogram by Kapre')
-visualise_model(model, src[np.newaxis, :], sr, logam=True)
-model2 = Sequential()
-model2.add(Spectrogram(n_dft=512, n_hop=256, input_shape=src[np.newaxis,:].shape,
-          return_decibel_spectrogram=False, power_spectrogram=2.0,
-          trainable_kernel=True, name='static_stft'))
+# model = Sequential()
+# model.add(Melspectrogram(sr=sr, n_mels=128,
+#           n_dft=512, n_hop=256, input_shape=src[np.newaxis,:].shape,
+#           return_decibel_melgram=False, power_melgram=2.0,
+#           trainable_kernel=True, name='melgram'))
+# plt.figure(figsize=(14, 8))
+# plt.subplot(2, 2, 1)
+# plt.title('log-MelSpectrogram by Kapre')
+# visualise_model(model, src[np.newaxis, :], sr, logam=True)
+# model2 = Sequential()
+# model2.add(Spectrogram(n_dft=512, n_hop=256, input_shape=src[np.newaxis,:].shape,
+#           return_decibel_spectrogram=False, power_spectrogram=2.0,
+#           trainable_kernel=True, name='static_stft'))
 # check_model(model2)
-plt.subplot(2, 2, 2)
-plt.title('log-Spectrogram by Kapre')
-visualise_model(model2, src[np.newaxis, :], sr, logam=True)
-plt.subplot(2, 2, 3)
-display.specshow(librosa.logamplitude(np.abs(librosa.stft(src[: sr * 3], 512, 256)) ** 2, ref_power=1.0),
-                         y_axis='linear', sr=sr)
-plt.title('log-Spectrogram by Librosa')
-plt.show()
-src[np.newaxis,:].shape
+# plt.subplot(2, 2, 2)
+# plt.title('log-Spectrogram by Kapre')
+# visualise_model(model2, src[np.newaxis, :], sr, logam=True)
+# plt.subplot(2, 2, 3)
+# display.specshow(librosa.logamplitude(np.abs(librosa.stft(src[: sr * 3], 512, 256)) ** 2, ref_power=1.0),
+#                          y_axis='linear', sr=sr)
+# plt.title('log-Spectrogram by Librosa')
+
+# plt.show()
+# src[np.newaxis,:].shape
 
 """
 Model
 """
 
-def build_model(X,Y, nb_classes):
-    nb_filters = 32  # number of convolutional filters to use
+def build_model(X,Y, nb_classes, kernel_size=(2,2),nb_layers=4):
+    nb_filters = 16  # number of convolutional filters to use
     pool_size = (2, 2)  # size of pooling area for max pooling
-    kernel_size = (3, 3)  # convolution kernel size
-    nb_layers = 4
-    # input_shape = (1,X.shape[1], X.shape[2])
+    # convolution kernel size
     input_shape = (1,X.shape[2])
     model = Sequential()
     model.add(Melspectrogram(sr=sr, n_mels=128,
           n_dft=512, n_hop=256, input_shape=input_shape,
-          return_decibel_melgram=True,
-          trainable_kernel=True, name='melgram'))
-    model.add(AdditiveNoise(power=0.2))
+          return_decibel_melgram=False,
+          trainable_kernel=False, name='melgram'))
+    model.add(AdditiveNoise(power=0.1))
     model.add(Normalization2D(str_axis='batch')) # or 'channel', 'time', 'batch', 'data_sample'
     model.add(Convolution2D(nb_filters, kernel_size[0], kernel_size[1],
     border_mode='valid', input_shape=input_shape,init="he_normal"))
     model.add(BatchNormalization(axis=1))
-    model.add(Activation('relu'))
+    model.add(ELU(alpha=0.1))
 
     for layer in range(nb_layers-1):
         model.add(Convolution2D(nb_filters, kernel_size[0], kernel_size[1],init="he_normal"))
         model.add(BatchNormalization(axis=1))
-        model.add(ELU(alpha=1.0))
+#        model.add(LeakyReLU(alpha=0.2))
+        model.add(ELU(alpha=0.1))
         model.add(MaxPooling2D(pool_size=pool_size))
         model.add(Dropout(0.25))
 
     model.add(Flatten())
     model.add(Dense(128,init="he_normal"))
-    model.add(Activation('relu'))
-    model.add(Dropout(0.2))
+#    model.add(Activation('tanh'))
+    model.add(ELU(alpha=0.1))
+    model.add(Dropout(0.1))
     model.add(Dense(nb_classes,init="he_normal"))
     model.add(Activation("softmax"))
     return model
@@ -173,39 +175,40 @@ def build_model(X,Y, nb_classes):
 '''
 Data Munging
 '''
-import pandas as pd
-from sklearn.model_selection import train_test_split
-import copy
-# genre_list = os.listdir('genres/')
-X=[]
+# import pandas as pd
+# from sklearn.model_selection import train_test_split
+# import copy
+#  genre_list = os.listdir('genres/')
 
-y=np.array([])
-for genre in genre_list:
-    for song in os.listdir('genres/'+genre+'/'):
-        src, sr= librosa.load('genres/'+genre+'/'+song, sr=None, mono=True)
-        X.append(src)
-        y=np.append(y,genre)
-X2=copy.copy(X)
-x_len_min=np.min([len(x) for x in X])
-X_new=np.array([x[:x_len_min] for x in X])
-X_arr=np.stack(X_new, axis=0)
-X_arr_exp=np.expand_dims(X_arr,1)
-y_dummies=pd.get_dummies(pd.Series(y), drop_first=False)
-X_train, X_test, y_train, y_test=train_test_split(X_arr_exp,y_dummies,test_size=0.2)
-X_train.shape
+# X=[] 
+# y=np.array([])
+# for genre in genre_list:
+#     for song in os.listdir('genres/'+genre+'/'):
+#         src, sr= librosa.load('genres/'+genre+'/'+song, sr=None, mono=True)
+#         X.append(src)
+#         y=np.append(y,genre)
+# X2=copy.copy(X)
+# x_len_min=np.min([len(x) for x in X])
+# X_new=np.array([x[:x_len_min] for x in X])
+# X_arr=np.stack(X_new, axis=0)
+# X_arr_exp=np.expand_dims(X_arr,1)
+# y_dummies=pd.get_dummies(pd.Series(y), drop_first=False)
+# X_train, X_test, y_train, y_test=train_test_split(X_arr_exp,y_dummies,test_size=0.2)
+# X_train.shape
 
 trained_model=build_model(X_train,y_train, len(genre_list))
+optimizer=Adadelta(lr=.1)
 trained_model.compile(loss='categorical_crossentropy',
-          optimizer='adadelta',
+          optimizer=optimizer,
           metrics=['accuracy'])
-batch_size = 20
-nb_epoch = 10
+batch_size = 10
+nb_epoch = 25
 # check_model(trained_model)
-trained_model.get_weights()
-trained_model.fit(X_train, y_train.values, batch_size=batch_size, epochs=nb_epoch,
-      verbose=1, validation_data=(X_test, y_test.values))
+# trained_model.get_weights()
 check_model(trained_model)
-load_checkpoint = True
+# checkpointer
 checkpoint_filepath = 'weights.hdf5'
 checkpointer = ModelCheckpoint(filepath=checkpoint_filepath, verbose=1, save_best_only=True)
-checkpointer
+# load_checkpoint = True
+trained_model.fit(X_train, y_train.values, batch_size=batch_size, epochs=nb_epoch,
+      verbose=1, callbacks=[checkpointer], validation_data=(X_test, y_test.values))

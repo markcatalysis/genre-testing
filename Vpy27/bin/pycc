@@ -1,0 +1,3 @@
+#!/home/ubuntu/genre-testing/Vpy27/bin/python2.7
+from numba.pycc import main
+main()
